@@ -1,0 +1,38 @@
+import pandas as pd
+import win32com.client as win32
+
+# Suponiendo que ya tienes un DataFrame df con las columnas:
+# comercial, cliente, venta, plazo
+
+# Agrupar por comercial y cliente
+tabla = (
+    df.groupby(['comercial', 'cliente'])
+    .agg(
+        venta_total=('venta', 'sum'),
+        plazo_mediana=('plazo', 'median'),
+        ventas_contadas=('venta', 'count')
+    )
+    .reset_index()
+)
+
+# Ordenar por venta_total descendente
+tabla = tabla.sort_values(by='venta_total', ascending=False)
+
+# No repetir comercial visualmente
+tabla['comercial'] = tabla['comercial'].mask(tabla['comercial'].duplicated())
+
+# Convertir a HTML (solo tabla, sin estilo)
+tabla_html = tabla.to_html(index=False, border=0, escape=False)
+
+# Crear mensaje de Outlook y reemplazar marcador
+outlook = win32.Dispatch('Outlook.Application')
+mail = outlook.CreateItem(0)
+
+# Plantilla con marcador
+plantilla_html = "<html><body><p>Estimado,</p>#tabla#<p>Saludos.</p></body></html>"
+
+# Reemplazar el marcador con la tabla generada
+mail.HTMLBody = plantilla_html.replace("#tabla#", tabla_html)
+
+# Guardar como archivo .msg
+mail.SaveAs(r"C:\ruta\reporte_ventas.msg")  # Cambia la ruta según tu sistema
