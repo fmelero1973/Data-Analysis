@@ -1,0 +1,67 @@
+from tableauserverclient import Server, TableauAuth
+import win32com.client
+import os
+
+def insertar_varios_dashboards_en_msg(server_url, usuario, token, site_id,
+                                      dashboards_dict,  # dict {marcador: view_name}
+                                      carpeta_temp,
+                                      plantilla_msg_path):
+    """
+    Descarga varias vistas de Tableau, abre la plantilla .msg y reemplaza
+    cada marcador con la imagen embebida correspondiente, adjuntándola.
+    
+    Parámetros:
+    - dashboards_dict: dict con pares {marcador: nombre_vista}, ejemplo:
+      {"#DAS1#": "das1", "#DAS2#": "das2"}
+    - carpeta_temp: carpeta para guardar las imágenes temporales
+    """
+
+    auth = TableauAuth(usuario, token, site_id=site_id)
+    server = Server(server_url, use_server_version=True)
+
+    with server.auth.sign_in(auth):
+        all_views, _ = server.views.get()
+
+        # Abrir Outlook y cargar plantilla
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        msg = outlook.CreateItemFromTemplate(plantilla_msg_path)
+
+        for marcador, view_name in dashboards_dict.items():
+            vista = next((v for v in all_views if v.name == view_name), None)
+            if not vista:
+                print(f"No se encontró la vista '{view_name}' en Tableau Server.")
+                continue
+
+            server.views.populate_image(vista)
+
+            image_path = os.path.join(carpeta_temp, f"{view_name}.png")
+            with open(image_path, "wb") as f:
+                f.write(vista.image)
+            print(f"Imagen de '{view_name}' guardada en {image_path}")
+
+            cid = marcador.strip("#").lower()
+            # Reemplazar marcador en HTML
+            msg.HTMLBody = msg.HTMLBody.replace(marcador, f'<img src="cid:{cid}">')
+
+            # Adjuntar imagen con Content-ID para mostrar embebida
+            attachment = msg.Attachments.Add(Source=image_path)
+            attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x3712001F", cid)
+
+        msg.Display()
+
+
+# Ejemplo de uso con varios dashboards y marcadores:
+insertar_varios_dashboards_en_msg(
+    server_url="https://tu-tableau-server",
+    usuario="Fernando",
+    token="001",
+    site_id="",
+    dashboards_dict={
+        "#DAS1#": "das1",
+        "#DAS2#": "das2",
+        "#DAS3#": "das3",
+        "#DAS4#": "das4"
+    },
+    carpeta_temp="C:/temp",
+    plantilla_msg_path="C:/temp/plantilla.msg"
+)
