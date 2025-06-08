@@ -1,0 +1,88 @@
+from lxml import etree
+import shutil
+import os
+from tableau_api_lib import TableauServerConnection
+from tableau_api_lib.utils.querying import get_projects_dataframe
+from tableau_api_lib.exceptions import ContentNotFound
+
+# ----------------------------------------------
+# CONFIGURACIÓN DEL USUARIO
+# ----------------------------------------------
+
+ORIGINAL_TWB = "C:/ruta/original/mi_dashboard.twb"
+TEMP_TWB = "C:/ruta/temp/dashboard_filtrado.twb"
+DASHBOARDS_A_PUBLICAR = ["Ventas", "Clientes"]
+
+TABLEAU_SERVER_URL = "https://your-server-url.com"
+TOKEN_NAME = "your_token_name"
+TOKEN_SECRET = "your_token_secret"
+PROJECT_NAME = "Reporting_vo"
+WORKBOOK_NAME = "Mi_Dashboard_Publicado"
+
+# ----------------------------------------------
+# FUNCIÓN PARA FILTRAR DASHBOARDS
+# ----------------------------------------------
+
+def filtrar_dashboards_twb(archivo_original, archivo_filtrado, dashboards_permitidos):
+    shutil.copyfile(archivo_original, archivo_filtrado)
+
+    tree = etree.parse(archivo_filtrado)
+    root = tree.getroot()
+
+    # Eliminar dashboards que no están en la lista
+    dashboards = root.xpath(".//dashboard")
+    for dash in dashboards:
+        nombre = dash.get("name")
+        if nombre not in dashboards_permitidos:
+            dash.getparent().remove(dash)
+
+    # Eliminar también las hojas (worksheets) que ya no estén referenciadas
+    hojas = root.xpath(".//worksheet")
+    for hoja in hojas:
+        nombre = hoja.get("name")
+        if not any(nombre in etree.tostring(d).decode("utf-8") for d in root.xpath(".//dashboard")):
+            hoja.getparent().remove(hoja)
+
+    tree.write(archivo_filtrado, pretty_print=True, xml_declaration=True, encoding="utf-8")
+
+# ----------------------------------------------
+# FUNCIÓN PARA PUBLICAR EL ARCHIVO FILTRADO
+# ----------------------------------------------
+
+def publicar_en_tableau(archivo_twb, workbook_name, project_name):
+    connection = TableauServerConnection(
+        server=TABLEAU_SERVER_URL,
+        api_version="3.16",
+        personal_access_token_name=TOKEN_NAME,
+        personal_access_token_secret=TOKEN_SECRET,
+        site=""
+    )
+    connection.sign_in()
+
+    # Obtener ID del proyecto
+    proyectos = get_projects_dataframe(connection)
+    proyecto = proyectos[proyectos['name'] == project_name]
+    if proyecto.empty:
+        raise ContentNotFound(f"No se encontró el proyecto '{project_name}'.")
+    project_id = proyecto['id'].values[0]
+
+    # Publicar el workbook
+    connection.publish_workbook(
+        workbook_file_path=archivo_twb,
+        workbook_name=workbook_name,
+        project_id=project_id,
+        overwrite=True
+    )
+
+    print(f"✅ Publicado '{workbook_name}' en el proyecto '{project_name}'.")
+    connection.sign_out()
+
+# ----------------------------------------------
+# EJECUCIÓN
+# ----------------------------------------------
+
+filtrar_dashboards_twb(ORIGINAL_TWB, TEMP_TWB, DASHBOARDS_A_PUBLICAR)
+publicar_en_tableau(TEMP_TWB, WORKBOOK_NAME, PROJECT_NAME)
+
+# Opcional: eliminar el archivo temporal
+os.remove(TEMP_TWB)
