@@ -1,0 +1,66 @@
+import pandas as pd
+from datetime import datetime
+
+# Ruta del archivo origen (ajústala si es necesario)
+ruta = r"\\smb-spain-frprdnas8335.spain.intra.corp\datas$\Resto_Grupos\DIREXP\DEPVEHOCA\Reporting\MotorTrade\Request\Peticiones RequestDrive\Request antiguas\RequestDrive2024.xlsx"
+
+# Leer el Excel completo
+df = pd.read_excel(ruta, sheet_name=None)
+DF_peritaciones = None
+for hoja in df:
+    if isinstance(df[hoja], pd.DataFrame):
+        if "Tabla1" in hoja:
+            DF_peritaciones = df[hoja]
+            break
+
+if DF_peritaciones is None:
+    raise ValueError("No se encontró la tabla 'Tabla1' en el archivo Excel.")
+
+# Selección de columnas
+columnas_deseadas = [
+    "Matricula", "FECHA SOLICITUD Inspeccion", "Campa", "Proveedor",
+    "Importe peritacion", "Fecha MT", "Plazo Peritacion", "Fecha entrada campa insitus"
+]
+DF_peritaciones = DF_peritaciones[columnas_deseadas]
+
+# Conversión de tipos
+DF_peritaciones["FECHA SOLICITUD Inspeccion"] = pd.to_datetime(DF_peritaciones["FECHA SOLICITUD Inspeccion"], errors='coerce')
+DF_peritaciones["Fecha MT"] = pd.to_datetime(DF_peritaciones["Fecha MT"], errors='coerce')
+DF_peritaciones["Plazo Peritacion"] = pd.to_numeric(DF_peritaciones["Plazo Peritacion"], errors='coerce').astype("Int64")
+
+# Reemplazo de nulls en Fecha MT
+fecha_pendiente = datetime(2222, 1, 1)
+DF_peritaciones["Fecha MT"].fillna(fecha_pendiente, inplace=True)
+
+# Columna PERITADO
+DF_peritaciones["PERITADO"] = DF_peritaciones["Fecha MT"].apply(
+    lambda x: "ANULADA" if x == datetime(1999, 1, 1)
+    else "PENDIENTE" if x == datetime(2222, 1, 1)
+    else "SI"
+)
+
+# Reemplazos de códigos
+proveedores = {
+    "MA0743": "MACADAM",
+    "DE1280": "DEKRA"
+}
+
+campas = {
+    "CA4922": "HARTMANN CORUÑA",
+    "CA4931": "AUTOFLOTAS CALAF",
+    "AR0935": "SETRAM",
+    "TE0788": "CAMPAC",
+    "AR0936": "GUADALIX",
+    "AU6958": "AUTOFLOTAS LOECHES",
+    "SE3391": "SEVILLA STOCKAUTO",
+    "AR3855": "HARTMANN VALENCIA",
+    "AU7563": "AUTOFLOTAS SEVILLA",
+    "IN1533": "INSITU",
+    "FL0711": "MALLORCA"
+}
+
+DF_peritaciones["Proveedor"] = DF_peritaciones["Proveedor"].replace(proveedores)
+DF_peritaciones["Campa"] = DF_peritaciones["Campa"].replace(campas)
+
+# Guardar en Excel sin formato de tabla
+DF_peritaciones.to_excel("peritaciones.xlsx", index=False)
