@@ -1,30 +1,6 @@
 import pandas as pd
 import numpy as np
 
-# Datos originales
-data = {
-    "STATUS": ["TERMINATED"] * 7,
-    "INVOICE_NUM": [
-        "2410373211", "241A001914", "2410374761",
-        "2410104698", "241A001521", "2410002943", "241A000522"
-    ],
-    "INVOICE_DATE": [
-        "2024-08-01", "2024-08-07", "2024-08-07",
-        "2024-02-19", "2024-06-05", "2024-01-12", "2024-02-19"
-    ],
-    "TOTAL_ITEM_VALUE": [
-        "21780,00", "-21780,00", "18000,00",
-        "35206,61", "-35206,61", "42600,00", "-42600,00"
-    ],
-    "COMPANY": ["CO4104", "CO4104", "CO6830", "GR2202", "GR2202", "GR2202", "GR2202"],
-    "COMPANY_NAME": [
-        "COPART AUTOS ESPAÑA SL", "COPART AUTOS ESPAÑA SL", "COPART AUTOS ESPAÑA SL",
-        "GRUPO DIROSAN CANARIAS SL", "GRUPO DIROSAN CANARIAS SL", "GRUPO DIROSAN CANARIAS SL", "GRUPO DIROSAN CANARIAS SL"
-    ],
-    "CHARGE_TYPE": ["SUPPROV", "SUPPROV", "SUPPROV", "SUPPROV", "SUPPRON", "SUPPRON", "SUPPROV"],
-    "CHARGE_TYPE_DUP": ["SUPPROV", "SUPPROV", "SUPPROV", "SUPPROV", "SUPPRON", "SUPPRON", "SUPPROV"],
-    "REGISTRATION": ["3455KMC"] * 7
-}
 
 df = pd.DataFrame(data)
 
