@@ -1,0 +1,86 @@
+import pandas as pd
+import numpy as np
+
+# Datos originales
+data = {
+    "STATUS": ["TERMINATED"] * 7,
+    "INVOICE_NUM": [
+        "2410373211", "241A001914", "2410374761",
+        "2410104698", "241A001521", "2410002943", "241A000522"
+    ],
+    "INVOICE_DATE": [
+        "2024-08-01", "2024-08-07", "2024-08-07",
+        "2024-02-19", "2024-06-05", "2024-01-12", "2024-02-19"
+    ],
+    "TOTAL_ITEM_VALUE": [
+        "21780,00", "-21780,00", "18000,00",
+        "35206,61", "-35206,61", "42600,00", "-42600,00"
+    ],
+    "COMPANY": ["CO4104", "CO4104", "CO6830", "GR2202", "GR2202", "GR2202", "GR2202"],
+    "COMPANY_NAME": [
+        "COPART AUTOS ESPAÑA SL", "COPART AUTOS ESPAÑA SL", "COPART AUTOS ESPAÑA SL",
+        "GRUPO DIROSAN CANARIAS SL", "GRUPO DIROSAN CANARIAS SL", "GRUPO DIROSAN CANARIAS SL", "GRUPO DIROSAN CANARIAS SL"
+    ],
+    "CHARGE_TYPE": ["SUPPROV", "SUPPROV", "SUPPROV", "SUPPROV", "SUPPRON", "SUPPRON", "SUPPROV"],
+    "CHARGE_TYPE_DUP": ["SUPPROV", "SUPPROV", "SUPPROV", "SUPPROV", "SUPPRON", "SUPPRON", "SUPPROV"],
+    "REGISTRATION": ["3455KMC"] * 7
+}
+
+df = pd.DataFrame(data)
+
+# Convertir tipos
+df["INVOICE_DATE"] = pd.to_datetime(df["INVOICE_DATE"])
+df["TOTAL_ITEM_VALUE"] = df["TOTAL_ITEM_VALUE"].str.replace(",", ".").astype(float)
+
+# Crear columna "TIPO": ABONO si lleva "A", si no PAGO
+df["TIPO"] = np.where(df["INVOICE_NUM"].str.contains("A", case=False), "ABONO", "PAGO")
+
+# Ordenar por matrícula y fecha
+df = df.sort_values(by=["REGISTRATION", "INVOICE_DATE"]).reset_index(drop=True)
+
+# Crear columna auxiliar para comparar valores
+df["VALOR_ABS"] = df["TOTAL_ITEM_VALUE"].abs()
+
+# Preparar columnas de agrupación
+group_cols = ["REGISTRATION", "VALOR_ABS", "COMPANY"]
+
+# Inicializar marca de emparejamiento
+df["EMPAJADO"] = False
+
+# Lista de pares emparejados
+pares = []
+
+# Emparejar pagos y abonos
+for _, grupo in df.groupby(group_cols):
+    pagos = grupo[(grupo["TIPO"] == "PAGO") & (~grupo["EMPAJADO"])]
+    abonos = grupo[(grupo["TIPO"] == "ABONO") & (~grupo["EMPAJADO"])]
+
+    num_pares = min(len(pagos), len(abonos))
+
+    if num_pares > 0:
+        pagos_idx = pagos.index[:num_pares]
+        abonos_idx = abonos.index[:num_pares]
+
+        for pago_i, abono_i in zip(pagos_idx, abonos_idx):
+            df.loc[pago_i, "EMPAJADO"] = True
+            df.loc[abono_i, "EMPAJADO"] = True
+            pares.append({
+                "PAGO_NUM": df.loc[pago_i, "INVOICE_NUM"],
+                "PAGO_DATE": df.loc[pago_i, "INVOICE_DATE"],
+                "PAGO_VALOR": df.loc[pago_i, "TOTAL_ITEM_VALUE"],
+                "ABONO_NUM": df.loc[abono_i, "INVOICE_NUM"],
+                "ABONO_DATE": df.loc[abono_i, "INVOICE_DATE"],
+                "ABONO_VALOR": df.loc[abono_i, "TOTAL_ITEM_VALUE"],
+                "REGISTRATION": df.loc[pago_i, "REGISTRATION"],
+                "COMPANY": df.loc[pago_i, "COMPANY"]
+            })
+
+# Crear DataFrame con emparejados
+df_emparejados = pd.DataFrame(pares)
+
+# Crear DataFrame con no emparejados
+sin_emparejar = df[~df["EMPAJADO"]].drop(columns=["VALOR_ABS", "EMPAJADO"])
+
+# Guardar ambos archivos Excel
+df_emparejados.to_excel("facturas_emparejadas.xlsx", index=False)
+sin_emparejar.to_excel("facturas_sin_emparejar.xlsx", index=False)
