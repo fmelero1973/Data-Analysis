@@ -1,13 +1,48 @@
-df = pd.DataFrame(data)
+import pandas as pd
+import numpy as np
 
-# Usar np.where para crear la columna 'TIPO' de forma eficiente
-df['TIPO'] = np.where(df['INVOICE_NUMB'].str.contains('A'), 'ABONO', 'PAGO')
+# Suponiendo que ya tienes el DataFrame df
 
-# Asegurarse de que la columna 'INVOICE_DATE' es de tipo datetime
-df['INVOICE_DATE'] = pd.to_datetime(df['INVOICE_DATE'], format='%Y-%m-%d')
+# Asegurar tipos
+df["INVOICE_DATE"] = pd.to_datetime(df["INVOICE_DATE"])
+df["TOTAL_ITEM_VALUE"] = df["TOTAL_ITEM_VALUE"].str.replace(",", ".").astype(float)
 
-# Ordenar los datos
-df_sorted = df.sort_values(by=['REGISTRATION', 'INVOICE_DATE', 'TIPO', 'INVOICE_NUMB'], ascending=[True, True, False, True])
+# Crear columna TIPO
+df["TIPO"] = np.where(df["INVOICE_NUM"].str.contains("A", case=False), "ABONO", "PAGO")
 
-# Mostrar el DataFrame ordenado
-print(df_sorted)
+# Ordenar por matrícula y fecha
+df = df.sort_values(by=["REGISTRATION", "INVOICE_DATE"]).reset_index(drop=True)
+
+# Crear una columna auxiliar para emparejar (valores absolutos)
+df["VALOR_ABS"] = df["TOTAL_ITEM_VALUE"].abs()
+
+# Creamos un DataFrame de salida
+sin_emparejar = pd.DataFrame(columns=df.columns)
+
+# Agrupar por matrícula, valor y compañía
+group_cols = ["REGISTRATION", "VALOR_ABS", "COMPANY"]
+
+# Crear una copia del DataFrame para marcar facturas emparejadas
+df["EMPAJADO"] = False
+
+for _, grupo in df.groupby(group_cols):
+    pagos = grupo[(grupo["TIPO"] == "PAGO") & (~grupo["EMPAJADO"])]
+    abonos = grupo[(grupo["TIPO"] == "ABONO") & (~grupo["EMPAJADO"])]
+
+    # Emparejar por orden de fecha
+    num_pares = min(len(pagos), len(abonos))
+
+    if num_pares > 0:
+        # Marcar los primeros N como emparejados
+        pagos_idx = pagos.index[:num_pares]
+        abonos_idx = abonos.index[:num_pares]
+        df.loc[pagos_idx, "EMPAJADO"] = True
+        df.loc[abonos_idx, "EMPAJADO"] = True
+
+# Filtrar las facturas que no han sido emparejadas
+sin_emparejar = df[~df["EMPAJADO"]].drop(columns=["VALOR_ABS", "EMPAJADO"])
+
+print(sin_emparejar[["REGISTRATION", "INVOICE_DATE", "INVOICE_NUM", "TIPO", "TOTAL_ITEM_VALUE"]])
+
+sin_emparejar.to_excel("facturas_sin_emparejar.xlsx", index=False)
+
