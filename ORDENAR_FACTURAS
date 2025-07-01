@@ -1,0 +1,13 @@
+df = pd.DataFrame(data)
+
+# Usar np.where para crear la columna 'TIPO' de forma eficiente
+df['TIPO'] = np.where(df['INVOICE_NUMB'].str.contains('A'), 'ABONO', 'PAGO')
+
+# Asegurarse de que la columna 'INVOICE_DATE' es de tipo datetime
+df['INVOICE_DATE'] = pd.to_datetime(df['INVOICE_DATE'], format='%Y-%m-%d')
+
+# Ordenar los datos
+df_sorted = df.sort_values(by=['REGISTRATION', 'INVOICE_DATE', 'TIPO', 'INVOICE_NUMB'], ascending=[True, True, False, True])
+
+# Mostrar el DataFrame ordenado
+print(df_sorted)
