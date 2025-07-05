@@ -1,0 +1,208 @@
+# SCRIPT UNIFICADO PARA PEGAR DASHBOARDS Y ENVIAR MAIL SEGÚN MARCA
+import win32com.client as win32
+import time
+import os
+import shutil
+from rich.progress import Progress
+from rich.console import Console
+from rich.prompt import Prompt
+from rich import print
+import inquirer
+
+from melvive.tableau import Tableau
+from melvive.utilidades import EnvioCorreo, MensajeAviso
+from melvive.funciones import mensaje_imprimir
+from melvive.claseoffice import ExcelSensibilidad
+
+# ---------------- CONFIGURACIÓN ----------------
+ruta_ataque_ppt = r'C:\Users\a33300\OneDrive - BNP Paribas\1 REMARKETING\BI\6_REPORTES_PARTNERS\REPORTE_PARTNERS.pptx'
+ruta_ataque_xlsx = r'C:\Users\a33300\OneDrive - BNP Paribas\1 REMARKETING\BI\6_REPORTES_PARTNERS\REPORTE_LISTA.xlsx'
+ruta_descarga_archivos = r'C:\Users\a33300\OneDrive - BNP Paribas\1 REMARKETING\BI\6_REPORTES_PARTNERS\C_TEMPORAL'
+ruta_msg_outlook = r'C:\Users\a33300\OneDrive - BNP Paribas\1 REMARKETING\BI\6_REPORTES_PARTNERS\A_ARCHIVOS_NECESARIOS\MAIL\mensaje_lista.msg'
+ruta_imagenes_temp = r'C:\Python\JupyterLab\Lab\PMELERO\SCRIPTS_py\REPORTE_PARTNERS'
+
+dashboards_por_marca = {
+    "VOLVO": {
+        "VOLV_1": ("REPORTING_VO", "VOLV_1"),
+        "VOLV_2": ("REPORTING_VO", "VOLV_2"),
+        "VOLV_3": ("REPORTING_VO", "VOLV_3")
+    },
+    "KIA": {
+        "KIA_1": ("REPORTING_VO", "KIA_1"),
+        "KIA_2": ("REPORTING_VO", "KIA_2"),
+        "KIA_3": ("REPORTING_VO", "KIA_3")
+    },
+    "HYUNDAI": {
+        "HYUN_1": ("REPORTING_VO", "HYUN_1"),
+        "HYUN_2": ("REPORTING_VO", "HYUN_2"),
+        "HYUN_3": ("REPORTING_VO", "HYUN_3")
+    },
+    "JLR": {
+        "JLR_1": ("REPORTING_VO", "JLR_1"),
+        "JLR_2": ("REPORTING_VO", "JLR_2"),
+        "JLR_3": ("REPORTING_VO", "JLR_3")
+    }
+}
+
+config_email_por_marca = {
+    'KIA': {'to': 'kia@ejemplo.com', 'cc': ['manager_kia@ejemplo.com']},
+    'HYUNDAI': {'to': 'hyundai@ejemplo.com', 'cc': ['manager_hyundai@ejemplo.com']},
+    'VOLVO': {'to': 'volvo@ejemplo.com', 'cc': ['ventas_volvo@ejemplo.com']},
+    'JLR': {'to': 'jlr@ejemplo.com', 'cc': ['gerente_jlr@ejemplo.com']}
+}
+
+# ---------------- FUNCIONES ----------------
+def pedir_marca():
+    opciones = [inquirer.List('LISTA', message='SELECCIONA LISTA', choices=list(dashboards_por_marca.keys()))]
+    respuesta = inquirer.prompt(opciones)
+    return respuesta['LISTA']
+
+def pedir_input(mensaje, color='yellow'):
+    while True:
+        valor = Prompt.ask(f"[{color}]{mensaje}[/{color}]").strip()
+        if valor.isdigit() and len(valor) == 6:
+            return valor
+        print("[red] Nº LISTA NO VÁLIDO[/red]")
+
+def pedir_input_fecha(mensaje, color='yellow'):
+    while True:
+        valor = Prompt.ask(f"[{color}]{mensaje}[/{color}]").strip()
+        if valor.isdigit() and len(valor) == 8:
+            return valor
+        print("[red] FORMATO FECHA NO VÁLIDO (AAAAMMDD)[/red]")
+
+def iniciar_excel(ruta_excel, visible=True):
+    excel = win32.Dispatch("Excel.Application")
+    excel.Visible = visible
+    wb = excel.Workbooks.Open(ruta_excel)
+    return wb
+
+def cerrar_excel(wb, cerrar=True, matar=True):
+    time.sleep(5)
+    wb.Save()
+    if cerrar: wb.Close()
+    if matar:
+        win32.Dispatch("Excel.Application").Quit()
+        os.system("taskkill /f /im excel.exe")
+
+def iniciar_powerpow(ruta_powerpo, visible=True):
+    ppt = win32.Dispatch("PowerPoint.Application")
+    ppt.Visible = visible
+    pres = ppt.Presentations.Open(ruta_powerpo)
+    return pres
+
+def cerrar_powerpo(pres, cerrar=True, matar=True):
+    time.sleep(5)
+    pres.Save()
+    if cerrar: pres.Close()
+    if matar:
+        win32.Dispatch("PowerPoint.Application").Quit()
+        os.system("taskkill /f /im POWERPNT.exe")
+
+def borrar_imagen(presentacion, num_diapo):
+    slide = presentacion.Slides(num_diapo)
+    for shape in list(slide.Shapes):
+        if shape.Type == 13:
+            shape.Delete()
+
+def pegar_imagen(presentacion, num_diapo, ruta_imagen, izquierda, arriba):
+    time.sleep(3)
+    slide = presentacion.Slides(num_diapo)
+    slide.Shapes.AddPicture(FileName=ruta_imagen, LinkToFile=False, SaveWithDocument=True, Left=izquierda, Top=arriba)
+
+def copiar_celda(wb, pres, hoja, slide, vinculos):
+    hoja_inicio = wb.Sheets(hoja)
+    destino = pres.Slides(slide)
+    for objeto_ppt, celda_excel in vinculos.items():
+        valor = str(hoja_inicio.Range(celda_excel).Value)
+        for shape in destino.Shapes:
+            if shape.Name == objeto_ppt:
+                shape.TextFrame.TextRange.Text = valor
+                break
+
+def consola_barra(tiempo, color='green', mensaje='EN PROCESO...'):
+    with Progress() as progress:
+        task = progress.add_task(f"[{color}]{mensaje}", total=tiempo)
+        while not progress.finished:
+            progress.update(task, advance=1)
+            time.sleep(1)
+
+# ---------------- EJECUCIÓN PRINCIPAL ----------------
+mensaje_inicio = MensajeAviso('REPORTE RESULTADO LISTAS EXCLUSIVAS')
+mensaje_inicio.inicio_script()
+
+console = Console()
+marca = pedir_marca()
+lista_exclusiva = pedir_input('ID LISTA EXCLUSIVA')
+lista_abierta = pedir_input('ID LISTA ABIERTA')
+fecha_subasta = pedir_input_fecha('FECHA FIN SUBASTA')
+nombre_archivo = f'{fecha_subasta}_{marca}'
+
+# 1. ESCRIBIR DATOS EN EXCEL
+mensaje_imprimir('Escribiendo datos en Excel...')
+wb = iniciar_excel(ruta_ataque_xlsx)
+wb.Sheets('N_listas').Range('A2').Value = lista_exclusiva
+wb.Sheets('N_listas').Range('B2').Value = lista_abierta
+cerrar_excel(wb)
+
+# 2. ACTUALIZAR CONSULTAS EN EXCEL
+mensaje_imprimir('Actualizando PowerQuery...')
+wb = iniciar_excel(ruta_ataque_xlsx)
+wb.RefreshAll()
+consola_barra(60, 'green', 'ACTUALIZANDO EXCEL...')
+cerrar_excel(wb)
+ruta_xlsx_guardado = os.path.join(ruta_descarga_archivos, f'{nombre_archivo}.xlsx')
+shutil.copy2(ruta_ataque_xlsx, ruta_xlsx_guardado)
+
+# 3. GENERAR DASHBOARDS
+mensaje_imprimir('Generando dashboards como imagen...')
+dashboards = dashboards_por_marca[marca]
+exportador = Tableau(dashboards)
+imagenes = exportador.imagenes_to_archivo(ruta_imagenes_temp)
+
+# 4. PEGAR DASHBOARDS EN POWERPOINT
+mensaje_imprimir('Pegando dashboards en PowerPoint...')
+pres = iniciar_powerpow(ruta_ataque_ppt)
+for i, clave in enumerate(dashboards.keys(), start=3):
+    nombre_imagen = f'Z_{clave}.png'
+    borrar_imagen(pres, i)
+    pegar_imagen(pres, i, imagenes[nombre_imagen], 0, 0 if i < 5 else 10)
+
+# 5. PEGAR DATOS EN POWERPOINT
+mensaje_imprimir('Pegando datos desde Excel a PowerPoint...')
+wb = iniciar_excel(ruta_ataque_xlsx)
+copiar_celda(wb, pres, 'DATOS_LISTA', 1, {'PA2': 'A2', 'PC2': 'C2'})
+copiar_celda(wb, pres, 'DATOS_LISTA', 2, {
+    'PB2': 'B2','PD2': 'D2','PE2': 'E2','PF2': 'F2','PG2': 'G2',
+    'PH2': 'H2','PI2': 'I2','PJ2': 'J2','PK2': 'K2','PL2': 'L2'
+})
+cerrar_excel(wb)
+
+# 6. GUARDAR COMO PDF
+mensaje_imprimir('Guardando como PDF...')
+ruta_pdf = os.path.join(ruta_descarga_archivos, f'{nombre_archivo}.pdf')
+pres.SaveAs(ruta_pdf, 32)
+cerrar_powerpo(pres)
+
+# 7. AÑADIR SENSIBILIDAD
+mensaje_imprimir('Asignando sensibilidad al Excel...')
+archivo_sensi = ExcelSensibilidad(ruta_xlsx_guardado)
+archivo_sensi.to_sensibilidad('CONFIDENTIAL_EXTERNAL_INTRA')
+
+# 8. ENVIAR CORREO
+mensaje_imprimir('Enviando correo...')
+config = config_email_por_marca.get(marca)
+if config:
+    correo = EnvioCorreo(
+        ruta_msg_outlook,
+        [ruta_pdf, ruta_xlsx_guardado],
+        f'{fecha_subasta} RESULTADO SUBASTA EXCLUSIVA {marca}',
+        config['to'],
+        cc=config['cc']
+    )
+    correo.to_correo()
+else:
+    mensaje_imprimir(f'[red]NO SE ENCONTRÓ CONFIGURACIÓN DE CORREO PARA LA MARCA {marca}[/red]')
+
+mensaje_fin = MensajeAviso('REPORTE RESULTADO LISTAS EXCLUSIVAS')
+mensaje_fin.fin_script()
