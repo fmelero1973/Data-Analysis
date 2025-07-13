@@ -55,3 +55,17 @@ def guardar_en_csv(nombre_csv, nombre_script, estado, mensaje):
         if archivo_nuevo:
             writer.writerow(encabezado)
         writer.writerow(fila)
+        
+        #PRINCIPAL
+        
+        
+def main():
+# Aquí va todo tu script largo y tus pasos intermedios
+    paso_1()
+    paso_2()
+# …
+
+if __name__ == "__main__":
+    from logger_config import ejecutar_con_log
+    ejecutar_con_log(main)
+    
