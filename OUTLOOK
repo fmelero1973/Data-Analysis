@@ -1,0 +1,17 @@
+import win32com.client
+
+# Conectar a Outlook
+outlook = win32com.client.Dispatch("Outlook.Application")
+namespace = outlook.GetNamespace("MAPI")
+
+# Listar todas las carpetas principales
+for folder in namespace.Folders:
+    print(f"Carpeta principal: {folder.Name}")
+    # Listar subcarpetas
+    for subfolder in folder.Folders:
+        print(f"  Subcarpeta: {subfolder.Name}")
+        # Listar subcarpetas anidadas (si las hay)
+        for subsubfolder in subfolder.Folders:
+            print(f"    Subcarpeta anidada: {subsubfolder.Name}")
+
+print("Proceso completado.")
